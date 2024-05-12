@@ -14,21 +14,18 @@ export default class TextConversation {
 
   private _authorName: string;
 
-  private _interactableID?: string;
-
   /**
    * Create a new Text Conversation
-   * Optionally, provide an interactableID to associate this conversation with an interactable
+   *
+   * @param socket socket to use to send/receive messages
+   * @param authorName name of message author to use as sender
    */
-  public constructor(coveyTownController: TownController, interactableID?: string) {
+  public constructor(coveyTownController: TownController) {
     this._coveyTownController = coveyTownController;
     this._authorName = coveyTownController.userName;
-    this._interactableID = interactableID;
     this._coveyTownController.addListener('chatMessage', (message: ChatMessage) => {
-      if (message.interactableID === interactableID) {
-        message.dateCreated = new Date(message.dateCreated);
-        this._onChatMessage(message);
-      }
+      message.dateCreated = new Date(message.dateCreated);
+      this._onChatMessage(message);
     });
   }
 
@@ -46,13 +43,8 @@ export default class TextConversation {
       body: message,
       author: this._authorName,
       dateCreated: new Date(),
-      interactableID: this._interactableID,
     };
     this._coveyTownController.emitChatMessage(msg);
-  }
-
-  public getMessages(): Promise<ChatMessage[]> {
-    return this._coveyTownController.getChatMessages(this._interactableID);
   }
 
   /**

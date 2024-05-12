@@ -1,7 +1,6 @@
 import { ITiledMap, ITiledMapObjectLayer } from '@jonbell/tiled-map-type-guard';
 import { nanoid } from 'nanoid';
 import { BroadcastOperator } from 'socket.io';
-import InvalidParametersError from '../lib/InvalidParametersError';
 import IVideoClient from '../lib/IVideoClient';
 import Player from '../lib/Player';
 import TwilioVideo from '../lib/TwilioVideo';
@@ -11,18 +10,24 @@ import {
   ConversationArea as ConversationAreaModel,
   CoveyTownSocket,
   Interactable,
-  InteractableCommand,
-  InteractableCommandBase,
   PlayerLocation,
   ServerToClientEvents,
   SocketData,
   ViewingArea as ViewingAreaModel,
+  Player as PlayerModel,
 } from '../types/CoveyTownSocket';
-import { logError } from '../Utils';
 import ConversationArea from './ConversationArea';
-import GameAreaFactory from './games/GameAreaFactory';
 import InteractableArea from './InteractableArea';
 import ViewingArea from './ViewingArea';
+
+const DEFAULT_INTERACTABLE_WIDTH = 100;
+const DEFAULT_INTERACTABLE_HEIGHT = 100;
+
+export type InteractableAddedBackendProps = {
+  update: Interactable;
+  playerX: number;
+  playerY: number;
+};
 
 /**
  * The Town class implements the logic for each town: managing the various events that
@@ -93,8 +98,6 @@ export default class Town {
 
   private _connectedSockets: Set<CoveyTownSocket> = new Set();
 
-  private _chatMessages: ChatMessage[] = [];
-
   constructor(
     friendlyName: string,
     isPubliclyListed: boolean,
@@ -138,20 +141,27 @@ export default class Town {
     // Set up a listener to forward all chat messages to all clients in the town
     socket.on('chatMessage', (message: ChatMessage) => {
       this._broadcastEmitter.emit('chatMessage', message);
-      this._chatMessages.push(message);
-      if (this._chatMessages.length > 200) {
-        this._chatMessages.shift();
-      }
     });
 
     // Register an event listener for the client socket: if the client updates their
     // location, inform the CoveyTownController
     socket.on('playerMovement', (movementData: PlayerLocation) => {
-      try {
-        this._updatePlayerLocation(newPlayer, movementData);
-      } catch (err) {
-        logError(err);
-      }
+      this._updatePlayerLocation(newPlayer, movementData);
+    });
+
+    // set up a listener to process request of removing Interactables.
+    socket.on('interactableRemoved', (update: Interactable) => {
+      this.removeInteractable(update);
+    });
+
+    // set up a listener to process request of adding conversationArea.
+    socket.on('conversationAreaAdded', (player: PlayerModel) => {
+      this.createConversationArea(player);
+    });
+
+    // set up a listener to process request of adding viewingArea.
+    socket.on('viewingAreaAdded', (player: PlayerModel) => {
+      this.createViewingArea(player);
     });
 
     // Set up a listener to process updates to interactables.
@@ -171,49 +181,6 @@ export default class Town {
         }
       }
     });
-
-    // Set up a listener to process commands to interactables.
-    // Dispatches commands to the appropriate interactable and sends the response back to the client
-    socket.on('interactableCommand', (command: InteractableCommand & InteractableCommandBase) => {
-      const interactable = this._interactables.find(
-        eachInteractable => eachInteractable.id === command.interactableID,
-      );
-      if (interactable) {
-        try {
-          const payload = interactable.handleCommand(command, newPlayer);
-          socket.emit('commandResponse', {
-            commandID: command.commandID,
-            interactableID: command.interactableID,
-            isOK: true,
-            payload,
-          });
-        } catch (err) {
-          if (err instanceof InvalidParametersError) {
-            socket.emit('commandResponse', {
-              commandID: command.commandID,
-              interactableID: command.interactableID,
-              isOK: false,
-              error: err.message,
-            });
-          } else {
-            logError(err);
-            socket.emit('commandResponse', {
-              commandID: command.commandID,
-              interactableID: command.interactableID,
-              isOK: false,
-              error: 'Unknown error',
-            });
-          }
-        }
-      } else {
-        socket.emit('commandResponse', {
-          commandID: command.commandID,
-          interactableID: command.interactableID,
-          isOK: false,
-          error: `No such interactable ${command.interactableID}`,
-        });
-      }
-    });
     return newPlayer;
   }
 
@@ -223,11 +190,11 @@ export default class Town {
    * @param session PlayerSession to destroy
    */
   private _removePlayer(player: Player): void {
+    this._players = this._players.filter(p => p.id !== player.id);
+    this._broadcastEmitter.emit('playerDisconnect', player.toPlayerModel());
     if (player.location.interactableID) {
       this._removePlayerFromInteractable(player);
     }
-    this._players = this._players.filter(p => p.id !== player.id);
-    this._broadcastEmitter.emit('playerDisconnect', player.toPlayerModel());
   }
 
   /**
@@ -312,6 +279,76 @@ export default class Town {
   }
 
   /**
+   * Creates a new ConversationArea where the player currently is and then adds it to the
+   * list of interactables.
+   * @param player The player creating the ConversationArea - provides the location of the
+   * creation of the ConversationArea
+   * @returns True if the ConversationArea doesn't collide with any other Interactables
+   * and is successfully created
+   */
+  public createConversationArea(player: PlayerModel): boolean {
+    const area: ConversationArea = new ConversationArea(
+      { topic: undefined, id: nanoid(), occupantsByID: [] },
+      {
+        x: player.location.x - DEFAULT_INTERACTABLE_WIDTH / 2,
+        y: player.location.y - DEFAULT_INTERACTABLE_HEIGHT / 2,
+        width: DEFAULT_INTERACTABLE_WIDTH,
+        height: DEFAULT_INTERACTABLE_HEIGHT,
+      },
+      this._broadcastEmitter,
+    );
+    if (!this._validateInteractable(area)) {
+      this._broadcastEmitter.emit('interactableAddedFailed', area.toModel());
+      return false;
+    }
+    area.addPlayersWithinBounds(this._players);
+    const newInteractables: InteractableArea[] = this._interactables;
+    newInteractables.push(area);
+    this._interactables = newInteractables;
+    this._broadcastEmitter.emit('conversationAreaAddedSucceeded', {
+      update: area.toModel(),
+      playerX: player.location.x,
+      playerY: player.location.y,
+    });
+    return true;
+  }
+
+  /**
+   * Creates a new ViewingArea where the player currently is and then adds it to the
+   * list of interactables.
+   * @param player The player creating the ViewingArea - provides the location of the
+   * creation of the ViewingArea
+   * @returns True if the ViewingArea doesn't collide with any other Interactables
+   * and is successfully created
+   */
+  public createViewingArea(player: PlayerModel): boolean {
+    const area: ViewingArea = new ViewingArea(
+      { id: nanoid(), isPlaying: false, elapsedTimeSec: 0 },
+      {
+        x: player.location.x - DEFAULT_INTERACTABLE_WIDTH / 2,
+        y: player.location.y - DEFAULT_INTERACTABLE_HEIGHT / 2,
+        width: DEFAULT_INTERACTABLE_WIDTH,
+        height: DEFAULT_INTERACTABLE_HEIGHT,
+      },
+      this._broadcastEmitter,
+    );
+    if (!this._validateInteractable(area)) {
+      this._broadcastEmitter.emit('interactableAddedFailed', area.toModel());
+      return false;
+    }
+    const newInteractables: InteractableArea[] = this._interactables;
+    newInteractables.push(area);
+    this._interactables = newInteractables;
+    area.addPlayersWithinBounds(this._players);
+    this._broadcastEmitter.emit('viewingAreaAddedSucceeded', {
+      update: area.toModel(),
+      playerX: player.location.x,
+      playerY: player.location.y,
+    });
+    return true;
+  }
+
+  /**
    * Creates a new viewing area in this town if there is not currently an active
    * viewing area with the same ID. The viewing area ID must match the name of a
    * viewing area that exists in this town's map, and the viewing area must not
@@ -342,6 +379,30 @@ export default class Town {
   }
 
   /**
+   * Removes an InteractableArea from this town.
+   * First removes players who are currently inside of the interactable from the interactable.
+   * Then, emits an interactableUpdate to the town regarding the interactable.
+   * Lastly, removes the interactable from this town's interactables list.
+   *
+   * @param interactable A model of the InteractableArea to remove.
+   * @returns True if the InteractableArea was successfully found, otherwise False.
+   */
+  public removeInteractable(interactable: Interactable): boolean {
+    const area = this._interactables.find(eachArea => eachArea.id === interactable.id);
+    if (!area) {
+      return false;
+    }
+    this._players.forEach(player => {
+      if (player.location.interactableID === interactable.id) {
+        this._removePlayerFromInteractable(player);
+      }
+    });
+    this._broadcastEmitter.emit('interactableRemoved', area.toModel());
+    this._interactables = this._interactables.filter(i => i.id !== area.id);
+    return true;
+  }
+
+  /**
    * Fetch a player's session based on the provided session token. Returns undefined if the
    * session token is not valid.
    *
@@ -364,14 +425,6 @@ export default class Town {
       throw new Error(`No such interactable ${id}`);
     }
     return ret;
-  }
-
-  /**
-   * Retrieves all chat messages, optionally filtered by interactableID
-   * @param interactableID optional interactableID to filter by
-   */
-  public getChatMessages(interactableID: string | undefined) {
-    return this._chatMessages.filter(eachMessage => eachMessage.interactableID === interactableID);
   }
 
   /**
@@ -418,17 +471,13 @@ export default class Town {
         ConversationArea.fromMapObject(eachConvAreaObj, this._broadcastEmitter),
       );
 
-    const gameAreas = objectLayer.objects
-      .filter(eachObject => eachObject.type === 'GameArea')
-      .map(eachGameAreaObj => GameAreaFactory(eachGameAreaObj, this._broadcastEmitter));
-
-    this._interactables = this._interactables
-      .concat(viewingAreas)
-      .concat(conversationAreas)
-      .concat(gameAreas);
+    this._interactables = this._interactables.concat(viewingAreas).concat(conversationAreas);
     this._validateInteractables();
   }
 
+  /**
+   * Validates the interactables that are in this town.
+   */
   private _validateInteractables() {
     // Make sure that the IDs are unique
     const interactableIDs = this._interactables.map(eachInteractable => eachInteractable.id);
@@ -451,5 +500,21 @@ export default class Town {
         }
       }
     }
+  }
+
+  /**
+   * Validates a single InteractableArea.
+   * Compares the InteractableArea to the others in this town, checking for unique IDs and no overlapping.
+   *
+   * @param interactable The InteractableArea to validate.
+   * @returns true if the InteractableArea is valid, and false if not.
+   */
+  private _validateInteractable(interactable: InteractableArea): boolean {
+    // Make sure that the IDs are unique
+    const interactableIDs = this._interactables.map(eachInteractable => eachInteractable.id);
+    return (
+      interactableIDs.every(item => item !== interactable.id) &&
+      this._interactables.every(eachInteractable => !eachInteractable.overlaps(interactable))
+    );
   }
 }

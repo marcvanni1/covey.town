@@ -21,7 +21,6 @@ import {
   PlayerLocation,
   ServerToClientEvents,
   SocketData,
-  TownEmitter,
   ViewingArea,
 } from './types/CoveyTownSocket';
 
@@ -37,9 +36,26 @@ export function createConversationForTesting(params?: {
 }): ConversationArea {
   return {
     id: params?.conversationID || nanoid(),
-    occupants: [],
+    occupantsByID: [],
     topic: params?.conversationTopic || nanoid(),
-    type: 'ConversationArea',
+  };
+}
+
+/**
+ * Create a new viewing area using some random defaults
+ * @param params
+ * @returns
+ */
+export function createViewingForTesting(params?: {
+  viewingID?: string;
+  viewingVideo?: string;
+  boundingBox?: BoundingBox;
+}): ViewingArea {
+  return {
+    id: params?.viewingID || nanoid(),
+    video: params?.viewingVideo || nanoid(),
+    isPlaying: false,
+    elapsedTimeSec: 0,
   };
 }
 
@@ -183,14 +199,6 @@ export function mockPlayer(townID: string): MockedPlayer {
     throw new Error(`Tried to broadcast to ${room} but this player is in ${townID}`);
   });
   return new MockedPlayer(socket, socketToRoomMock, userName, townID, undefined);
-}
-
-/**
- * Utility function to create a new player object for testing, not connected to any town
- *
- */
-export function createPlayerForTesting(): Player {
-  return new Player(`username${nanoid()}`, mock<TownEmitter>());
 }
 
 /**

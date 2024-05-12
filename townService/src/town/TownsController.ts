@@ -9,7 +9,6 @@ import {
   Patch,
   Path,
   Post,
-  Query,
   Response,
   Route,
   Tags,
@@ -19,11 +18,12 @@ import { Town, TownCreateParams, TownCreateResponse } from '../api/Model';
 import InvalidParametersError from '../lib/InvalidParametersError';
 import CoveyTownsStore from '../lib/TownsStore';
 import {
-  ChatMessage,
   ConversationArea,
   CoveyTownSocket,
+  Interactable,
   TownSettingsUpdate,
   ViewingArea,
+  Player,
 } from '../types/CoveyTownSocket';
 
 /**
@@ -113,20 +113,27 @@ export class TownsController extends Controller {
    * Creates a conversation area in a given town
    * @param townID ID of the town in which to create the new conversation area
    * @param sessionToken session token of the player making the request, must match the session token returned when the player joined the town
-   * @param requestBody The new conversation area to create
+   * @param requestBody The new conversation area to create or the player whcih we create a new conversation area around
    */
   @Post('{townID}/conversationArea')
   @Response<InvalidParametersError>(400, 'Invalid values specified')
   public async createConversationArea(
     @Path() townID: string,
     @Header('X-Session-Token') sessionToken: string,
-    @Body() requestBody: Omit<ConversationArea, 'type'>,
+    @Body() requestBody: ConversationArea | Player,
   ): Promise<void> {
     const town = this._townsStore.getTownByID(townID);
     if (!town?.getPlayerBySessionToken(sessionToken)) {
       throw new InvalidParametersError('Invalid values specified');
     }
-    const success = town.addConversationArea({ ...requestBody, type: 'ConversationArea' });
+    let success = false;
+    if ('userName' in requestBody) {
+      const requestBodyPlayer: Player = requestBody as Player;
+      success = town.createConversationArea(requestBodyPlayer);
+    } else {
+      const requestBodyConvArea: ConversationArea = requestBody as ConversationArea;
+      success = town.addConversationArea(requestBodyConvArea);
+    }
     if (!success) {
       throw new InvalidParametersError('Invalid values specified');
     }
@@ -134,22 +141,42 @@ export class TownsController extends Controller {
 
   /**
    * Creates a viewing area in a given town
-   *
    * @param townID ID of the town in which to create the new viewing area
-   * @param sessionToken session token of the player making the request, must
-   *        match the session token returned when the player joined the town
-   * @param requestBody The new viewing area to create
-   *
-   * @throws InvalidParametersError if the session token is not valid, or if the
-   *          viewing area could not be created
+   * @param sessionToken session token of the player making the request, must match the session token returned when the player joined the town
+   * @param requestBody The new viewing area to create or the player which we create a new viewing area around
    */
   @Post('{townID}/viewingArea')
   @Response<InvalidParametersError>(400, 'Invalid values specified')
   public async createViewingArea(
     @Path() townID: string,
     @Header('X-Session-Token') sessionToken: string,
-    @Body() requestBody: Omit<ViewingArea, 'type'>,
+    @Body() requestBody: ViewingArea | Player,
   ): Promise<void> {
+    const town = this._townsStore.getTownByID(townID);
+    if (!town?.getPlayerBySessionToken(sessionToken)) {
+      throw new InvalidParametersError('Invalid values specified');
+    }
+    let success = false;
+    if ('userName' in requestBody) {
+      const requestBodyPlayer: Player = requestBody as Player;
+      success = town.createViewingArea(requestBodyPlayer);
+    } else {
+      const requestBodyViewingArea: ViewingArea = requestBody as ViewingArea;
+      success = town.addViewingArea(requestBodyViewingArea);
+    }
+    if (!success) {
+      throw new InvalidParametersError('Invalid values specified');
+    }
+  }
+
+  /**
+   * Removes an InteractableArea from the town with the given townID.
+   *
+   * @param townID  The ID of the town to remove.
+   * @param sessionToken The sessionToken ID.
+   * @param area The interactable area to remove.
+   */
+  private _removeInteractableArea(townID: string, sessionToken: string, area: Interactable): void {
     const town = this._townsStore.getTownByID(townID);
     if (!town) {
       throw new InvalidParametersError('Invalid values specified');
@@ -157,36 +184,52 @@ export class TownsController extends Controller {
     if (!town?.getPlayerBySessionToken(sessionToken)) {
       throw new InvalidParametersError('Invalid values specified');
     }
-    const success = town.addViewingArea({ ...requestBody, type: 'ViewingArea' });
+    const success = town.removeInteractable(area);
     if (!success) {
       throw new InvalidParametersError('Invalid values specified');
     }
   }
 
   /**
-   * Retrieves up to the first 200 chat messages for a given town, optionally filtered by interactableID
-   * @param townID town to retrieve messages for
-   * @param sessionToken a valid session token for a player in the town
-   * @param interactableID optional interactableID to filter messages by
-   * @returns list of chat messages
+   * Removes a ConversationArea from the town with the given townID.
+   * Throws an InvalidParametersError if:
+   * - the area does not exist,
+   * - the session token is invalid,
+   * - or the town ID is invalid.
+   *
+   * @param townID The ID of the town to remove the ConversationArea from.
+   * @param sessionToken The session token.
+   * @param requestBody The request body, containing the ConversationArea model.
    */
-  @Get('{townID}/chatMessages')
+  @Delete('{townID}/conversationArea')
   @Response<InvalidParametersError>(400, 'Invalid values specified')
-  public async getChatMessages(
+  public async removeConversationArea(
     @Path() townID: string,
     @Header('X-Session-Token') sessionToken: string,
-    @Query() interactableID?: string,
-  ): Promise<ChatMessage[]> {
-    const town = this._townsStore.getTownByID(townID);
-    if (!town) {
-      throw new InvalidParametersError('Invalid values specified');
-    }
-    const player = town.getPlayerBySessionToken(sessionToken);
-    if (!player) {
-      throw new InvalidParametersError('Invalid values specified');
-    }
-    const messages = town.getChatMessages(interactableID);
-    return messages;
+    @Body() requestBody: ConversationArea,
+  ): Promise<void> {
+    this._removeInteractableArea(townID, sessionToken, requestBody);
+  }
+
+  /**
+   * Removes a ViewingArea from the town with the given townID.
+   * Throws an InvalidParametersError if:
+   * - the area does not exist,
+   * - the session token is invalid,
+   * - or the town ID is invalid.
+   *
+   * @param townID The ID of the town to remove the ViewingArea from.
+   * @param sessionToken The session token.
+   * @param requestBody The request body, containing the ViewingArea model.
+   */
+  @Delete('{townID}/viewingArea')
+  @Response<InvalidParametersError>(400, 'Invalid values specified')
+  public async removeViewingArea(
+    @Path() townID: string,
+    @Header('X-Session-Token') sessionToken: string,
+    @Body() requestBody: ViewingArea,
+  ): Promise<void> {
+    this._removeInteractableArea(townID, sessionToken, requestBody);
   }
 
   /**

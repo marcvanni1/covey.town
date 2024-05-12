@@ -6,6 +6,7 @@ import { ConversationArea, Interactable, TownEmitter, ViewingArea } from '../typ
 import TownsStore from '../lib/TownsStore';
 import {
   createConversationForTesting,
+  createViewingForTesting,
   getLastEmittedEvent,
   extractSessionToken,
   mockPlayer,
@@ -14,6 +15,7 @@ import {
   MockedPlayer,
 } from '../TestUtils';
 import { TownsController } from './TownsController';
+import Player from '../lib/Player';
 
 type TestTownData = {
   friendlyName: string;
@@ -231,8 +233,8 @@ describe('TownsController integration tests', () => {
       const initialData = getLastEmittedEvent(player.socket, 'initialize');
       const conversationArea = createConversationForTesting({
         boundingBox: { x: 10, y: 10, width: 1, height: 1 },
-        conversationID: initialData.interactables.find(eachInteractable =>
-          isConversationArea(eachInteractable),
+        conversationID: initialData.interactables.find(
+          eachInteractable => 'occupantsByID' in eachInteractable,
         )?.id,
       });
       await controller.createConversationArea(
@@ -265,7 +267,7 @@ describe('TownsController integration tests', () => {
       interactables = initialData.interactables;
     });
 
-    describe('Create Conversation Area', () => {
+    describe('Create Conversation Area - Using ConversationArea as requestBody', () => {
       it('Executes without error when creating a new conversation', async () => {
         await controller.createConversationArea(
           testingTown.townID,
@@ -300,7 +302,52 @@ describe('TownsController integration tests', () => {
       });
     });
 
-    describe('[T1] Create Viewing Area', () => {
+    describe('Create Conversation Area - Using Player as requestBody', () => {
+      it('Executes without error when creating a new conversation', async () => {
+        player.moveTo(0, 0, undefined, undefined);
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await controller.createConversationArea(testingTown.townID, sessionToken, playerData);
+        }
+      });
+      it('Executes with error when creating a new conversation area that interferes in bounding box', async () => {
+        await controller.createConversationArea(
+          testingTown.townID,
+          sessionToken,
+          createConversationForTesting({
+            conversationID: interactables.find(isConversationArea)?.id,
+            conversationTopic: undefined,
+            boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+          }),
+        );
+        player.moveTo(0, 0, undefined, undefined);
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createConversationArea(testingTown.townID, sessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+      it('Returns an error message if the town ID is invalid', async () => {
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createConversationArea(nanoid(), sessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+      it('Checks for a valid session token before creating a conversation area', async () => {
+        const invalidSessionToken = nanoid();
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createConversationArea(testingTown.townID, invalidSessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+    });
+
+    describe('Create Viewing Area using ViewingArea as request body', () => {
       it('Executes without error when creating a new viewing area', async () => {
         const viewingArea = interactables.find(isViewingArea) as ViewingArea;
         if (!viewingArea) {
@@ -311,8 +358,6 @@ describe('TownsController integration tests', () => {
             id: viewingArea.id,
             video: nanoid(),
             isPlaying: true,
-            occupants: [],
-            type: 'ViewingArea',
           };
           await controller.createViewingArea(testingTown.townID, sessionToken, newViewingArea);
           // Check to see that the viewing area was successfully updated
@@ -332,8 +377,6 @@ describe('TownsController integration tests', () => {
           id: viewingArea.id,
           video: nanoid(),
           isPlaying: true,
-          occupants: [],
-          type: 'ViewingArea',
         };
         await expect(
           controller.createViewingArea(nanoid(), sessionToken, newViewingArea),
@@ -347,18 +390,156 @@ describe('TownsController integration tests', () => {
           id: viewingArea.id,
           video: nanoid(),
           isPlaying: true,
-          occupants: [],
-          type: 'ViewingArea',
         };
         await expect(
           controller.createViewingArea(testingTown.townID, invalidSessionToken, newViewingArea),
         ).rejects.toThrow();
       });
-      it('Returns an error message if addViewingArea returns false', async () => {
+      it('Returns an error message if creating a viewing area returns false', async () => {
         const viewingArea = interactables.find(isViewingArea) as ViewingArea;
         viewingArea.id = nanoid();
         await expect(
           controller.createViewingArea(testingTown.townID, sessionToken, viewingArea),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe('Create New Viewing Area using player as request body', () => {
+      it('Executes without error when creating a new viewing area', async () => {
+        player.moveTo(0, 0, undefined, undefined);
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await controller.createViewingArea(testingTown.townID, sessionToken, playerData);
+        }
+      });
+      it('Executes with error when creating a new viewing area that interferes in bounding box', async () => {
+        await controller.createViewingArea(
+          testingTown.townID,
+          sessionToken,
+          createViewingForTesting({
+            viewingID: interactables.find(isViewingArea)?.id,
+            viewingVideo: undefined,
+            boundingBox: { x: 0, y: 0, width: 100, height: 100 },
+          }),
+        );
+        player.moveTo(0, 0, undefined, undefined);
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createViewingArea(testingTown.townID, sessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+      it('Returns an error message if the town ID is invalid', async () => {
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createViewingArea(nanoid(), sessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+      it('Checks for a valid session token before creating a viewing area', async () => {
+        const invalidSessionToken = nanoid();
+        const playerData: Player | undefined = player.player;
+        if (playerData !== undefined) {
+          await expect(
+            controller.createViewingArea(testingTown.townID, invalidSessionToken, playerData),
+          ).rejects.toThrow();
+        }
+      });
+    });
+
+    describe('removeConversationArea', () => {
+      it('Executes without error when removing an existing conversation area', async () => {
+        const conv = interactables.find(isConversationArea) as ConversationArea;
+        if (!conv) {
+          fail('Missing one of the expected available areas');
+        }
+        await controller.removeConversationArea(testingTown.townID, sessionToken, conv);
+        const townEmitter = getBroadcastEmitterForTownID(testingTown.townID);
+        const convMessage = getLastEmittedEvent(townEmitter, 'interactableRemoved');
+        expect(isConversationArea(convMessage)).toBeTruthy();
+        expect(convMessage).toEqual(conv);
+      });
+      it('Should throw an error when removing a non-existing area', async () => {
+        const conv = interactables.find(isConversationArea) as ConversationArea;
+        if (!conv) {
+          fail('Missing one of the expected available areas');
+        }
+        const newConv = createConversationForTesting();
+        await expect(
+          controller.removeConversationArea(testingTown.townID, sessionToken, newConv),
+        ).rejects.toThrow();
+        await controller.removeConversationArea(testingTown.townID, sessionToken, conv);
+        await expect(
+          controller.removeConversationArea(testingTown.townID, sessionToken, conv),
+        ).rejects.toThrow();
+      });
+      it('Should throw an error if the town ID is invalid', async () => {
+        const conv = interactables.find(isConversationArea) as ConversationArea;
+        if (!conv) {
+          fail('Missing one of the expected available areas');
+        }
+        await expect(
+          controller.removeConversationArea(nanoid(), sessionToken, conv),
+        ).rejects.toThrow();
+      });
+      it('Should throw an error if the session token is invalid', async () => {
+        const conv = interactables.find(isConversationArea) as ConversationArea;
+        if (!conv) {
+          fail('Missing one of the expected available areas');
+        }
+        await expect(
+          controller.removeConversationArea(testingTown.townID, nanoid(), conv),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe('removeViewingArea', () => {
+      it('Executes without error when removing an existing viewing area', async () => {
+        const view = interactables.find(isViewingArea) as ViewingArea;
+        if (!view) {
+          fail('Missing one of the expected available areas');
+        }
+        await controller.removeViewingArea(testingTown.townID, sessionToken, view);
+        const townEmitter = getBroadcastEmitterForTownID(testingTown.townID);
+        const viewMessage = getLastEmittedEvent(townEmitter, 'interactableRemoved');
+        expect(isViewingArea(viewMessage)).toBeTruthy();
+        expect(viewMessage).toEqual(view);
+      });
+      it('Should throw an error when removing a non-existing area', async () => {
+        const view = interactables.find(isViewingArea) as ViewingArea;
+        if (!view) {
+          fail('Missing one of the expected available areas');
+        }
+        const newView: ViewingArea = {
+          elapsedTimeSec: 100,
+          id: nanoid(),
+          video: nanoid(),
+          isPlaying: true,
+        };
+        await expect(
+          controller.removeViewingArea(testingTown.townID, sessionToken, newView),
+        ).rejects.toThrow();
+        await controller.removeViewingArea(testingTown.townID, sessionToken, view);
+        await expect(
+          controller.removeViewingArea(testingTown.townID, sessionToken, view),
+        ).rejects.toThrow();
+      });
+      it('Should throw an error if the town ID is invalid', async () => {
+        const view = interactables.find(isViewingArea) as ViewingArea;
+        if (!view) {
+          fail('Missing one of the expected available areas');
+        }
+        await expect(controller.removeViewingArea(nanoid(), sessionToken, view)).rejects.toThrow();
+      });
+      it('Should throw an error if the session token is invalid', async () => {
+        const view = interactables.find(isViewingArea) as ViewingArea;
+        if (!view) {
+          fail('Missing one of the expected available areas');
+        }
+        await expect(
+          controller.removeViewingArea(testingTown.townID, nanoid(), view),
         ).rejects.toThrow();
       });
     });

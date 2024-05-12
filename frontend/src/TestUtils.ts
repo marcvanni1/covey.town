@@ -1,19 +1,12 @@
 import { ReservedOrUserListener } from '@socket.io/component-emitter';
 import { mock, MockProxy } from 'jest-mock-extended';
 import { nanoid } from 'nanoid';
-import ConversationAreaController from './classes/interactable/ConversationAreaController';
+import ConversationAreaController from './classes/ConversationAreaController';
 import PlayerController from './classes/PlayerController';
 import TownController, { TownEvents } from './classes/TownController';
-import ViewingAreaController from './classes/interactable/ViewingAreaController';
+import ViewingAreaController from './classes/ViewingAreaController';
 import { TownsService } from './generated/client';
-import {
-  ConversationArea,
-  CoveyTownSocket,
-  PlayerLocation,
-  ServerToClientEvents,
-  TownJoinResponse,
-  ViewingArea,
-} from './types/CoveyTownSocket';
+import { CoveyTownSocket, ServerToClientEvents, TownJoinResponse } from './types/CoveyTownSocket';
 
 //These types copied from socket.io server library so that we don't have to depend on the whole thing to have type-safe tests.
 type SocketReservedEventsMap = {
@@ -125,12 +118,10 @@ export function mockTownController({
     Object.defineProperty(mockedController, 'players', { value: players });
   }
   if (conversationAreas) {
-    Object.defineProperty(mockedController, 'interactableAreas', { value: conversationAreas });
     Object.defineProperty(mockedController, 'conversationAreas', { value: conversationAreas });
   }
   if (viewingAreas) {
-    Object.defineProperty(mockedController, 'interactableAreas', { value: viewingAreas });
-    Object.defineProperty(mockedController, 'viewingAreas', { value: conversationAreas });
+    Object.defineProperty(mockedController, 'viewingAreas', { value: viewingAreas });
   }
   return mockedController;
 }
@@ -172,9 +163,8 @@ export async function mockTownControllerConnection(
     responseToSendController.interactables.push({
       id: nanoid(),
       topic: undefined,
-      occupants: [],
-      type: 'ConversationArea',
-    } as ConversationArea);
+      occupantsByID: [],
+    });
     for (let i = 0; i < 10; i++) {
       const playerID = nanoid();
       responseToSendController.currentPlayers.push({
@@ -185,17 +175,14 @@ export async function mockTownControllerConnection(
       responseToSendController.interactables.push({
         id: nanoid(),
         topic: nanoid(),
-        occupants: [playerID],
-        type: 'ConversationArea',
-      } as ConversationArea);
+        occupantsByID: [playerID],
+      });
       responseToSendController.interactables.push({
         id: nanoid(),
         video: nanoid(),
         elapsedTimeSec: 0,
         isPlaying: false,
-        occupants: [],
-        type: 'ViewingArea',
-      } as ViewingArea);
+      });
     }
   }
   mockSocket.on.mockImplementationOnce((eventName, eventListener) => {
@@ -235,13 +222,4 @@ export function getTownEventListener<Ev extends EventNames<TownEvents>>(
     }
   }
   throw new Error(`No event listener found for event ${eventName}`);
-}
-
-export function randomLocation(): PlayerLocation {
-  return {
-    moving: Math.random() < 0.5,
-    rotation: 'front',
-    x: Math.random() * 1000,
-    y: Math.random() * 1000,
-  };
 }

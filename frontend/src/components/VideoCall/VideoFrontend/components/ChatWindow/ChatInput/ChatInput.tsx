@@ -1,11 +1,9 @@
 import { makeStyles } from '@material-ui/core';
 import TextareaAutosize from '@material-ui/core/TextareaAutosize';
 import clsx from 'clsx';
-import { set } from 'lodash';
 import React, { useEffect, useRef, useState } from 'react';
 import TextConversation from '../../../../../../classes/TextConversation';
 import useTownController from '../../../../../../hooks/useTownController';
-import useChatContext from '../../../hooks/useChatContext/useChatContext';
 import { isMobile } from '../../../utils';
 import Snackbar from '../../Snackbar/Snackbar';
 
@@ -60,10 +58,15 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
+interface ChatInputProps {
+  conversation: TextConversation;
+  isChatWindowOpen: boolean;
+}
+
 const ALLOWED_FILE_TYPES =
   'audio/*, image/*, text/*, video/*, application/msword, application/vnd.openxmlformats-officedocument.wordprocessingml.document .xslx, .ppt, .pdf, .key, .svg, .csv';
 
-export default function ChatInput() {
+export default function ChatInput({ conversation, isChatWindowOpen }: ChatInputProps) {
   const classes = useStyles();
   const [messageBody, setMessageBody] = useState('');
   const [isSendingFile, setIsSendingFile] = useState(false);
@@ -73,7 +76,6 @@ export default function ChatInput() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
   const coveyTownController = useTownController();
-  const {conversation, isChatWindowOpen, setIsChatWindowOpen} = useChatContext();
 
   useEffect(() => {
     if(isTextareaFocused){
@@ -95,7 +97,7 @@ export default function ChatInput() {
   };
 
   const handleSendMessage = (message: string) => {
-    if (isValidMessage && conversation) {
+    if (isValidMessage) {
       conversation.sendMessage(message.trim());
       setMessageBody('');
     }
@@ -106,9 +108,6 @@ export default function ChatInput() {
     if (!isMobile && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSendMessage(messageBody);
-    }
-    if(!isMobile && event.key === 'Escape'){
-      setIsChatWindowOpen(false);
     }
   };
 

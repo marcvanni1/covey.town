@@ -1,7 +1,9 @@
 import { Heading, StackDivider, VStack } from '@chakra-ui/react';
 import React from 'react';
-import InteractableAreasList from './InteractableAreasList';
+import ConversationAreasList from './ConversationAreasList';
 import PlayersList from './PlayersList';
+import MuiDialog from './MuiDialog';
+import MuiDropDown from './MuiDropDown';
 
 export default function SocialSidebar(): JSX.Element {
   return (
@@ -19,7 +21,9 @@ export default function SocialSidebar(): JSX.Element {
         Players In This Town
       </Heading>
       <PlayersList />
-      <InteractableAreasList />
+      <ConversationAreasList />
+      {<MuiDialog />}
+      {<MuiDropDown />}
     </VStack>
   );
 }

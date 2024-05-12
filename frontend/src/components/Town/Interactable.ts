@@ -2,11 +2,7 @@ import TownController from '../../classes/TownController';
 import TownGameScene from './TownGameScene';
 
 //TODO is there not some way to figure this out from generic types/supertypes?
-export type KnownInteractableTypes =
-  | 'conversationArea'
-  | 'viewingArea'
-  | 'transporter'
-  | 'gameArea';
+export type KnownInteractableTypes = 'conversationArea' | 'viewingArea' | 'transporter';
 
 /**
  * A base abstract class for representing an "interactable" in the Phaser game world.
@@ -52,6 +48,13 @@ export default abstract class Interactable extends Phaser.GameObjects.Sprite {
     this._scene = scene;
     this.townController = scene.coveyTownController;
     scene.physics.world.enable(this);
+
+    // add listener for removing interactables
+    this.townController.addListener('interactableRemoved', (interactableID: string) => {
+      if (this.id === interactableID) {
+        this.destroy();
+      }
+    });
   }
 
   /**
@@ -60,8 +63,8 @@ export default abstract class Interactable extends Phaser.GameObjects.Sprite {
    * size of this sprite).
    */
   addedToScene(): void {
+    this.y += this.displayHeight;
     super.addedToScene();
-    this.townController = (this.scene as TownGameScene).coveyTownController;
     this._id = this.name;
     const sprite = this.townController.ourPlayer.gameObjects?.sprite;
     if (!sprite) {
@@ -76,11 +79,7 @@ export default abstract class Interactable extends Phaser.GameObjects.Sprite {
         });
         this.overlap();
       }
-      if (
-        this.isOverlapping &&
-        this._scene.cursorKeys.space.isDown &&
-        !this.townController.paused
-      ) {
+      if (this.isOverlapping && this._scene.cursorKeys.space.isDown) {
         this.townController.interact(this);
         this.interact();
       }

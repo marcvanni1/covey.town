@@ -1,8 +1,8 @@
 import { Container } from '@chakra-ui/react';
 import React, { useEffect, useRef, useState } from 'react';
 import ReactPlayer from 'react-player';
-import { useInteractable, useInteractableAreaController } from '../../../classes/TownController';
-import ViewingAreaController from '../../../classes/interactable/ViewingAreaController';
+import { useInteractable, useViewingAreaController } from '../../../classes/TownController';
+import ViewingAreaController from '../../../classes/ViewingAreaController';
 import useTownController from '../../../hooks/useTownController';
 import SelectVideoModal from './SelectVideoModal';
 import ViewingAreaInteractable from './ViewingArea';
@@ -119,9 +119,7 @@ export function ViewingArea({
   viewingArea: ViewingAreaInteractable;
 }): JSX.Element {
   const townController = useTownController();
-  const viewingAreaController = useInteractableAreaController<ViewingAreaController>(
-    viewingArea.name,
-  );
+  const viewingAreaController = useViewingAreaController(viewingArea.name);
   const [selectIsOpen, setSelectIsOpen] = useState(viewingAreaController.video === undefined);
   const [viewingAreaVideoURL, setViewingAreaVideoURL] = useState(viewingAreaController.video);
   useEffect(() => {
@@ -142,12 +140,7 @@ export function ViewingArea({
     return (
       <SelectVideoModal
         isOpen={selectIsOpen}
-        close={() => {
-          setSelectIsOpen(false);
-          // forces game to emit "viewingArea" event again so that
-          // repoening the modal works as expected
-          townController.interactEnd(viewingArea);
-        }}
+        close={() => setSelectIsOpen(false)}
         viewingArea={viewingArea}
       />
     );

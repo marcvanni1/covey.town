@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useEffect, useRef, useState } from 'react';
+import React, { createContext, useEffect, useRef, useState } from 'react';
 import TextConversation from '../../../../../classes/TextConversation';
 import useTownController from '../../../../../hooks/useTownController';
 import { ChatMessage } from '../../../../../types/CoveyTownSocket';
@@ -9,16 +9,14 @@ type ChatContextType = {
   hasUnreadMessages: boolean;
   messages: ChatMessage[];
   conversation: TextConversation | null;
-  isChatWindowClosable: boolean;
 };
 
 export const ChatContext = createContext<ChatContextType>(null!);
 
-export const ChatProvider = ({ children, interactableID} : {children?: ReactNode | undefined, interactableID?: string}) => {
+export const ChatProvider: React.FC = ({ children }) => {
   const coveyTownController = useTownController();
   const isChatWindowOpenRef = useRef(false);
   const [isChatWindowOpen, setIsChatWindowOpen] = useState(false);
-  const [isChatWindowClosable, setIsChatWindowClosable] = useState(interactableID === undefined);
   const [conversation, setConversation] = useState<TextConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -27,7 +25,8 @@ export const ChatProvider = ({ children, interactableID} : {children?: ReactNode
     if (conversation) {
       const handleMessageAdded = (message: ChatMessage) =>
         setMessages(oldMessages => [...oldMessages, message]);
-      conversation.getMessages().then(newMessages => setMessages(newMessages));
+      //TODO - store entire message queue on server?
+      // conversation.getMessages().then(newMessages => setMessages(newMessages.items));
       conversation.onMessageAdded(handleMessageAdded);
       return () => {
         conversation.offMessageAdded(handleMessageAdded);
@@ -48,13 +47,12 @@ export const ChatProvider = ({ children, interactableID} : {children?: ReactNode
   }, [isChatWindowOpen]);
 
   useEffect(() => {
-    const conv = new TextConversation(coveyTownController, interactableID);
+    const conv = new TextConversation(coveyTownController);
     setConversation(conv);
-    setIsChatWindowClosable(interactableID === undefined);
     return () => {
       conv.close();
     };
-  }, [coveyTownController, interactableID]);
+  }, [coveyTownController, setConversation]);
 
   return (
     <ChatContext.Provider
@@ -64,7 +62,6 @@ export const ChatProvider = ({ children, interactableID} : {children?: ReactNode
         hasUnreadMessages,
         messages,
         conversation,
-        isChatWindowClosable
       }}>
       {children}
     </ChatContext.Provider>

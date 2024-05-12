@@ -6,9 +6,7 @@
       "dom.iterable",
       "esnext"
     ],
-    "types": [
-      "jest"
-    ],
+	  "types": ["jest"],
     "allowJs": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -23,30 +21,13 @@
     "noImplicitAny": true,
     "noImplicitThis": true,
     "strictNullChecks": true,
-    "jsx": "preserve",
-    "rootDirs": [
-      "./src/",
-      "./generated/",
-      "./pages/"
-    ],
+    "jsx": "react-jsx",
+    "rootDirs": ["./src/", "./generated/"],
     "alwaysStrict": true /* Parse in strict mode and emit "use strict" for each source file. */,
-    "incremental": true,
-    "typeRoots": [
-      "./node_modules/@types",
-      "src/types"
-    ],
   },
   "include": [
     "src",
-    "generated",
-    "pages"
+    "generated"
   ],
-  "references": [
-    {
-      "path": "../shared/"
-    }
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+  "references": [{"path": "../shared/"}]
 }

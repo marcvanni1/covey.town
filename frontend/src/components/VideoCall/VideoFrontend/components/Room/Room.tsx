@@ -44,16 +44,18 @@ const useStyles = makeStyles((theme: Theme) => {
 
 export default function Room() {
   const classes = useStyles();
+  const { isChatWindowOpen } = useChatContext();
   const { isBackgroundSelectionOpen } = useVideoContext();
   return (
     <div
       className={clsx(classes.container, {
-        [classes.rightDrawerOpen]: isBackgroundSelectionOpen,
+        [classes.rightDrawerOpen]: isChatWindowOpen || isBackgroundSelectionOpen,
       })}
     >
       {/* <MainParticipant /> */}
       <ParticipantList />
-       <BackgroundSelectionDialog />
+      <ChatWindow />
+      <BackgroundSelectionDialog />
     </div>
   );
 }
